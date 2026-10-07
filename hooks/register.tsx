@@ -277,7 +277,14 @@ async function compactWith($: EngineInterface, instructions: string, attempt: nu
       await writeRequest($, id, 'done', 'via /compact-kommandot')
       await beat($).catch(() => undefined)
     } catch (fallback) {
-      await writeRequest($, id, 'failed', `${errorText(error)} | /compact: ${errorText(fallback)}`)
+      // Last resort: paste `/compact <text>` as if typed; it runs once idle.
+      try {
+        await $.prompt.submit({ text: `/compact ${instructions}`, asUser: true })
+        await writeRequest($, id, 'compacting', 'inklistrat som /compact, körs när sessionen är ledig')
+      } catch (pasted) {
+        const notes = [errorText(error), `/compact: ${errorText(fallback)}`, `inklistring: ${errorText(pasted)}`]
+        await writeRequest($, id, 'failed', notes.join(' | '))
+      }
     }
   }
 }
@@ -548,6 +555,21 @@ export const register: Register = on => {
       }
     }
     await tick($)
+
+    return result
+  })
+
+  // However the compaction ran (call, command or pasted /compact), a request
+  // waiting on it is done once it stands.
+  on('session.compact', async ($, e, next) => {
+    const result = await next(e)
+    const isSkipped = 'skip' in result && result.skip !== undefined
+    const id = await $.session.id()
+    const request = (await read($, requests))[id]
+    if (!isSkipped && request?.state === 'compacting') {
+      await writeRequest($, id, 'done').catch(() => undefined)
+      $.clock.after(2_000, () => void beat($).catch(() => undefined))
+    }
 
     return result
   })
