@@ -241,8 +241,24 @@ async function takeRequest($: EngineInterface): Promise<void> {
   void $.prompt.submit({ text: SUMMARY_PROMPT })
 }
 
+// A session may answer as a pasteable block: ```\n/compact text\n```. Only the
+// text is the instruction.
+function toInstructions(answer: string): string {
+  return answer
+    .trim()
+    .replace(/^```[a-z]*\s*\n?/i, '')
+    .replace(/\n?```\s*$/, '')
+    .trim()
+    .replace(/^\/compact\s+/, '')
+    .trim()
+}
+
+const errorText = (error: unknown) =>
+  (error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').slice(0, 160)
+
 // Step 2: compact with the summary as instructions. Compaction is refused while
-// a turn runs, so it is retried a few times.
+// a turn runs, so it is retried a few times; the last try goes through the
+// /compact command instead, and a failure keeps the engine's own words.
 async function compactWith($: EngineInterface, instructions: string, attempt: number): Promise<void> {
   const id = await $.session.id()
   try {
@@ -250,12 +266,19 @@ async function compactWith($: EngineInterface, instructions: string, attempt: nu
     const isSkipped = 'skip' in result && result.skip !== undefined
     await writeRequest($, id, isSkipped ? 'failed' : 'done', isSkipped ? 'avbruten av en hook' : undefined)
     await beat($).catch(() => undefined)
-  } catch {
-    if (attempt >= 5) {
-      await writeRequest($, id, 'failed', 'sessionen blev aldrig ledig')
+  } catch (error) {
+    if (attempt < 5) {
+      await writeRequest($, id, 'compacting', `försök ${attempt} avvisat: ${errorText(error)}`)
+      $.clock.after(10_000, () => void compactWith($, instructions, attempt + 1))
       return
     }
-    $.clock.after(10_000, () => void compactWith($, instructions, attempt + 1))
+    try {
+      await $.command.run({ command: 'compact', args: instructions })
+      await writeRequest($, id, 'done', 'via /compact-kommandot')
+      await beat($).catch(() => undefined)
+    } catch (fallback) {
+      await writeRequest($, id, 'failed', `${errorText(error)} | /compact: ${errorText(fallback)}`)
+    }
   }
 }
 
@@ -515,7 +538,7 @@ export const register: Register = on => {
       if (lastPrompt?.text.includes(SUMMARY_MARKER)) {
         await update($, isAwaitingSummary, () => false)
         const id = await $.session.id()
-        const summary = e.answer.trim()
+        const summary = toInstructions(e.answer)
         if (e.isAborted || summary === '') {
           await writeRequest($, id, 'failed', e.isAborted ? 'sammanfattningen avbröts' : 'tom sammanfattning')
         } else {
