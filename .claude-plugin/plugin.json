@@ -1,0 +1,7 @@
+{
+  "name": "context-meter",
+  "version": "0.2.0",
+  "description": "Context-window meter for every running Claude Code session, with Compact now, auto-compact and options",
+  "author": { "name": "sp1e" },
+  "types": "./types/index.d.ts"
+}
