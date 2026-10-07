@@ -59,3 +59,7 @@ A session loads it at start. The estimated rows need `python` on `PATH` (`script
 ```bash
 claude plugin validate .
 ```
+
+## License
+
+MIT, see [LICENSE](LICENSE).
