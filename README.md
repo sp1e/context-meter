@@ -38,7 +38,7 @@ A session can only compact itself, so a request goes through a file:
 
 ## Every compaction gets structured instructions
 
-A compaction that arrives without instructions of its own gets a fixed outline: the engine's auto-compact at its threshold, a bare `/compact` and a precompute. The summary then has the headings LÄGE, GJORT, BESLUT, FILER, FEL OCH LÖSNINGAR, NÄSTA STEG and FAST, with exact paths, ids, commands and numbers. A `/compact` typed with text keeps that text. Subagents' own compactions are left alone.
+A compaction that arrives without instructions of its own gets a fixed outline: the engine's auto-compact at its threshold, a bare `/compact` and a precompute. The summary then has the headings LÄGE, GJORT, BESLUT, FILER, FEL OCH LÖSNINGAR, NÄSTA STEG and FAST, with exact paths, ids, commands and numbers. The decisive line of each error is quoted verbatim, so the full tool output can be found again in the session transcript by searching for that line. A `/compact` typed with text keeps that text. Subagents' own compactions are left alone.
 
 Every summary that stands is saved to `compacts/<UTC time>_<session id>.md`, with the session, folder, trigger and tokens before and after. Other sessions can search them there.
 

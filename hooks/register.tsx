@@ -30,7 +30,7 @@ const MINUTE_STEPS = [5, 10, 30, 60, 240]
 const SUMMARY_MARKER = 'Pausa dev här och skriv en bra /compact'
 const SUMMARY_PROMPT =
   `${SUMMARY_MARKER} för den här sessionen: vad som är gjort, vad som återstår, ` +
-  'fattade beslut, viktiga filsökvägar och nästa steg. ' +
+  'fattade beslut, viktiga filsökvägar och nästa steg. Citera avgörande felrader ordagrant. ' +
   'Svara ENDAST med texten som ska stå efter /compact, inget annat.'
 
 // Steers every compaction that arrives without instructions of its own: the
@@ -42,7 +42,8 @@ const COMPACT_INSTRUCTIONS = [
   'GJORT: det som är klart och verifierat, med uppmätta tal och hur det verifierades.',
   'BESLUT: vad användaren har bestämt, med användarens egna ord där de spelar roll, och vad som väntar på beslut.',
   'FILER: fullständiga sökvägar till varje fil som skapats eller ändrats, säkerhetskopior, grenar, commits och PR-länkar.',
-  'FEL OCH LÖSNINGAR: fel som uppstod, orsaken och vad som löste dem, så att de inte upprepas.',
+  'FEL OCH LÖSNINGAR: fel som uppstod, orsaken och vad som löste dem, så att de inte upprepas. ' +
+    'Citera den avgörande felraden ordagrant inom backticks, så att hela utskriften kan sökas fram i transkriptet.',
   'NÄSTA STEG: numrerade, i den ordning de ska göras.',
   'FAST: regler och rättelser användaren gett i sessionen som ska gälla framåt.',
   'Ta med exakta namn, id:n, kommandon och tal. Utelämna resonemang och mellansteg som inte påverkar fortsättningen.',
