@@ -39,6 +39,10 @@ export type MeterPrefs = {
   showEstimated: boolean
   /** A new session starts with its auto-compact box ticked. */
   autoInNewSessions: boolean
+  /** Idle compact: minutes without a turn before a large session compacts; 0 turns it off. */
+  idleMinutes: number
+  /** Idle compact only touches a session with at least this many context tokens. */
+  idleMinTokens: number
 }
 
 declare module 'claude-code' {
@@ -54,6 +58,8 @@ declare module 'claude-code' {
       isAutoCompact: boolean
       isOptionsOpen: boolean
       prefs: MeterPrefs
+      lastTurnAt: number
+      isTurnRunning: boolean
     }
   }
 }

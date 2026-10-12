@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { CompactRequest, CompactState, ContextBeat, MeterPrefs } from '../types'
+import { isIdleCompactDue } from './idle'
 
 const PANE = 'context-meter'
 const BEAT_MS = 15_000
@@ -19,6 +20,8 @@ const DEFAULT_PREFS: MeterPrefs = {
   activeMinutes: 10,
   showEstimated: true,
   autoInNewSessions: false,
+  idleMinutes: 55,
+  idleMinTokens: 150_000,
 }
 
 // What the options' pickers offer; a stored value outside them is added.
@@ -26,6 +29,9 @@ const COMPACT_STEPS = [30, 40, 50, 60, 70, 80, 90]
 const YELLOW_STEPS = [30, 40, 50, 60, 70, 80]
 const RED_STEPS = [50, 60, 70, 75, 80, 90, 95]
 const MINUTE_STEPS = [5, 10, 30, 60, 240]
+const IDLE_STEPS = [0, 30, 45, 55]
+const TOKEN_STEPS = [100_000, 150_000, 200_000, 250_000]
+
 
 const SUMMARY_MARKER = 'Pausa dev här och skriv en bra /compact'
 const SUMMARY_PROMPT =
@@ -68,6 +74,9 @@ const isBandHidden = atom({ plugin: 'context-meter', key: 'isBandHidden' } as co
 const isAutoCompact = atom({ plugin: 'context-meter', key: 'isAutoCompact' } as const, false)
 const isOptionsOpen = atom({ plugin: 'context-meter', key: 'isOptionsOpen' } as const, false)
 const prefs = atom({ plugin: 'context-meter', key: 'prefs' } as const, DEFAULT_PREFS)
+// When this session's last main turn ended (0: none since the session started), and whether one runs now.
+const lastTurnAt = atom({ plugin: 'context-meter', key: 'lastTurnAt' } as const, 0)
+const isTurnRunning = atom({ plugin: 'context-meter', key: 'isTurnRunning' } as const, false)
 // After a failed or finished compaction, auto-compact waits this long.
 const AUTO_PAUSE_MS = 10 * 60_000
 
@@ -96,6 +105,8 @@ function toPrefs(raw: unknown): MeterPrefs {
     activeMinutes: numberOr(p.activeMinutes, d.activeMinutes),
     showEstimated: booleanOr(p.showEstimated, d.showEstimated),
     autoInNewSessions: booleanOr(p.autoInNewSessions, d.autoInNewSessions),
+    idleMinutes: numberOr(p.idleMinutes, d.idleMinutes),
+    idleMinTokens: numberOr(p.idleMinTokens, d.idleMinTokens),
   }
 }
 
@@ -116,6 +127,18 @@ const YES_NO = [
   { value: 'no', label: 'Nej' },
 ]
 const yesNo = (isOn: boolean) => (isOn ? 'yes' : 'no')
+
+function idleOptions(current: number) {
+  return [...new Set([...IDLE_STEPS, current])]
+    .sort((a, b) => a - b)
+    .map(n => ({ value: String(n), label: n === 0 ? 'av' : `${n} min` }))
+}
+
+function tokenOptions(current: number) {
+  return [...new Set([...TOKEN_STEPS, current])]
+    .sort((a, b) => a - b)
+    .map(n => ({ value: String(n), label: `${n / 1000}k` }))
+}
 
 const kilo = (n: number) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : `${Math.round(n / 1000)}k`
@@ -386,11 +409,35 @@ async function autoCompact($: EngineInterface): Promise<void> {
   await writeRequest($, id, 'requested', 'auto-compact')
 }
 
+// Idle compact: see idle.ts. Once per idle stretch: a request made after the last turn ends it.
+async function idleCompact($: EngineInterface): Promise<void> {
+  const [p, last, isRunning, isAwaiting] = await Promise.all([
+    read($, prefs),
+    read($, lastTurnAt),
+    read($, isTurnRunning),
+    read($, isAwaitingSummary),
+  ])
+  if (p.idleMinutes <= 0 || last === 0 || isRunning || isAwaiting) return
+  const [id, usage, now] = await Promise.all([$.session.id(), $.session.usage(), $.clock.now()])
+  const request = (await read($, requests))[id]
+  const due = isIdleCompactDue({
+    idleMinutes: p.idleMinutes,
+    minTokens: p.idleMinTokens,
+    lastTurnAt: last,
+    now,
+    tokens: usage.context.tokens ?? 0,
+    lastRequestAt: request?.at,
+    isRequestBusy: isBusy(request),
+  })
+  if (due) await writeRequest($, id, 'requested', `inaktiv i ${Math.round((now - last) / 60_000)} min`)
+}
+
 async function tick($: EngineInterface): Promise<void> {
   await loadPrefs($).catch(() => undefined)
   await beat($).catch(() => undefined)
   await refresh($).catch(() => undefined)
   await autoCompact($).catch(() => undefined)
+  await idleCompact($).catch(() => undefined)
   await takeRequest($).catch(() => undefined)
 }
 
@@ -522,6 +569,20 @@ export const register: Register = on => {
               onSelect={v => void savePrefs($, { autoInNewSessions: v === 'yes' })}
             />
             <Select
+              key="context-meter-opt-idle"
+              label="Compact vid inaktivitet efter "
+              options={idleOptions(p.idleMinutes)}
+              value={String(p.idleMinutes)}
+              onSelect={v => void savePrefs($, { idleMinutes: Number(v) })}
+            />
+            <Select
+              key="context-meter-opt-idle-tokens"
+              label="…om kontexten är minst "
+              options={tokenOptions(p.idleMinTokens)}
+              value={String(p.idleMinTokens)}
+              onSelect={v => void savePrefs($, { idleMinTokens: Number(v) })}
+            />
+            <Select
               key="context-meter-opt-button-at"
               label="[Compact]-knapp i panelen från "
               options={percentOptions(COMPACT_STEPS, p.buttonAt)}
@@ -581,8 +642,18 @@ export const register: Register = on => {
     )
   })
 
+  on('turn.start', async ($, e, next) => {
+    await update($, isTurnRunning, () => true)
+    return next(e)
+  })
+
   on('turn.complete', async ($, e, next) => {
     const result = await next(e)
+    if (e.agentId === undefined) {
+      const now = await $.clock.now()
+      await update($, isTurnRunning, () => false)
+      await update($, lastTurnAt, () => now)
+    }
     if (e.agentId === undefined && (await read($, isAwaitingSummary))) {
       const messages = await $.session.messages()
       const lastPrompt = [...messages].reverse().find(m => m.role === 'user' && m.text.trim() !== '')

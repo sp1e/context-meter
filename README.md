@@ -22,6 +22,8 @@ The UI text is in Swedish.
 |---|---|
 | Auto-compact at | 50 % |
 | Auto-compact on in new sessions | No |
+| Compact when idle after | 55 min (`av` turns it off) |
+| …if the context is at least | 150k tokens |
 | `[Compact]` in the pane from | 50 % |
 | Yellow from / red above | 50 % / 75 % |
 | Show sessions active within | 10 min |
@@ -35,6 +37,10 @@ A session can only compact itself, so a request goes through a file:
 1. The button writes `~/.claude/context-meter/requests/<session id>.json`.
 2. The target session picks it up on its next tick (every 15 s) and submits a prompt starting with `Pausa dev här och skriv en bra /compact`.
 3. When that turn completes, its answer becomes the instructions for `$.session.compact`, retried up to five times while the session is busy.
+
+## Idle compact
+
+The API keeps the prompt cache for an hour. A prompt sent after a longer pause writes the whole context into the cache again, at twice the input price. A session that has had no turn for the idle time (55 min by default), with at least 150k tokens of context, therefore compacts itself through the same steps as Compact now. The summary turn reads the context from a warm cache, and the return starts from the smaller compacted context. It runs once per idle stretch, only while the cache is still warm (under 60 minutes), and not after a session is resumed, since the cache is cold by then.
 
 ## Every compaction gets structured instructions
 
