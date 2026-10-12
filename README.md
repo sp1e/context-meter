@@ -36,12 +36,19 @@ A session can only compact itself, so a request goes through a file:
 2. The target session picks it up on its next tick (every 15 s) and submits a prompt starting with `Pausa dev här och skriv en bra /compact`.
 3. When that turn completes, its answer becomes the instructions for `$.session.compact`, retried up to five times while the session is busy.
 
+## Every compaction gets structured instructions
+
+A compaction that arrives without instructions of its own gets a fixed outline: the engine's auto-compact at its threshold, a bare `/compact` and a precompute. The summary then has the headings LÄGE, GJORT, BESLUT, FILER, FEL OCH LÖSNINGAR, NÄSTA STEG and FAST, with exact paths, ids, commands and numbers. A `/compact` typed with text keeps that text. Subagents' own compactions are left alone.
+
+Every summary that stands is saved to `compacts/<UTC time>_<session id>.md`, with the session, folder, trigger and tokens before and after. Other sessions can search them there.
+
 ## Files it writes
 
 All under `~/.claude/context-meter/`:
 
 - `<session id>.json`: one heartbeat per session, every 15 s.
 - `requests/`: compaction requests and their state.
+- `compacts/`: one Markdown file per compaction, the summary as it stands.
 - `prefs.json`: the options.
 
 ## Install

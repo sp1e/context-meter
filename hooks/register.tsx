@@ -33,6 +33,21 @@ const SUMMARY_PROMPT =
   'fattade beslut, viktiga filsökvägar och nästa steg. ' +
   'Svara ENDAST med texten som ska stå efter /compact, inget annat.'
 
+// Steers every compaction that arrives without instructions of its own: the
+// engine's auto-compact at its threshold, a bare /compact, and a precompute.
+const COMPACT_INSTRUCTIONS = [
+  'Skriv sammanfattningen så att en ny session kan fortsätta utan att fråga något. Skriv på samtalets språk.',
+  'Använd exakt dessa rubriker, i den här ordningen:',
+  'LÄGE: en mening om vad som pågår just nu och om något arbete är halvfärdigt.',
+  'GJORT: det som är klart och verifierat, med uppmätta tal och hur det verifierades.',
+  'BESLUT: vad användaren har bestämt, med användarens egna ord där de spelar roll, och vad som väntar på beslut.',
+  'FILER: fullständiga sökvägar till varje fil som skapats eller ändrats, säkerhetskopior, grenar, commits och PR-länkar.',
+  'FEL OCH LÖSNINGAR: fel som uppstod, orsaken och vad som löste dem, så att de inte upprepas.',
+  'NÄSTA STEG: numrerade, i den ordning de ska göras.',
+  'FAST: regler och rättelser användaren gett i sessionen som ska gälla framåt.',
+  'Ta med exakta namn, id:n, kommandon och tal. Utelämna resonemang och mellansteg som inte påverkar fortsättningen.',
+].join('\n')
+
 const STATE_TEXT: Record<CompactState, string> = {
   requested: 'compact begärd',
   summarizing: 'skriver sammanfattning',
@@ -228,6 +243,34 @@ async function writeRequest($: EngineInterface, id: string, state: CompactState,
   const request: CompactRequest = { state, at: await $.clock.now(), ...(note ? { note } : {}) }
   await $.fs.write(`${await heartbeatDir($)}/requests/${id}.json`, JSON.stringify(request))
   await update($, requests, all => ({ ...all, [id]: request }))
+}
+
+// The compaction's summary is the first message of the conversation it leaves.
+// Saved as compacts/<date>_<session id>.md, one file per compaction.
+async function archiveSummary(
+  $: EngineInterface,
+  id: string,
+  trigger: string,
+  result: { messages?: readonly { text: string }[]; tokensBefore?: number; tokensAfter?: number },
+): Promise<void> {
+  const summary = result.messages?.[0]?.text?.trim()
+  if (!summary) return
+  const at = new Date(await $.clock.now())
+  const stamp = at.toISOString().slice(0, 19).replace(/[:T]/g, '-')
+  const cwd = await $.session.cwd()
+  const tokens =
+    result.tokensBefore !== undefined
+      ? `${Math.round(result.tokensBefore / 1000)}k → ${Math.round((result.tokensAfter ?? 0) / 1000)}k tokens`
+      : ''
+  const header = [
+    `# Compact ${at.toISOString().slice(0, 16).replace('T', ' ')} UTC`,
+    '',
+    `- Session: ${label || folderName(cwd)} (\`${id}\`)`,
+    `- Mapp: \`${cwd}\``,
+    `- Utlöst av: ${trigger}${tokens ? `, ${tokens}` : ''}`,
+    '',
+  ].join('\n')
+  await $.fs.write(`${await heartbeatDir($)}/compacts/${stamp}_${id}.md`, `${header}\n${summary}\n`)
 }
 
 // Step 1, in the target session: a requested compaction queues the summary
@@ -561,10 +604,17 @@ export const register: Register = on => {
 
   // However the compaction ran (call, command or pasted /compact), a request
   // waiting on it is done once it stands.
+  // A compaction without instructions gets the structured ones, and every
+  // summary that stands is archived under compacts/ for later sessions.
   on('session.compact', async ($, e, next) => {
-    const result = await next(e)
+    const isMain = e.agentId === undefined
+    const steered = isMain && !e.instructions?.trim() ? { ...e, instructions: COMPACT_INSTRUCTIONS } : e
+    const result = await next(steered)
     const isSkipped = 'skip' in result && result.skip !== undefined
     const id = await $.session.id()
+    if (!isSkipped && isMain && e.trigger !== 'precompute') {
+      await archiveSummary($, id, e.trigger, result).catch(() => undefined)
+    }
     const request = (await read($, requests))[id]
     if (!isSkipped && request?.state === 'compacting') {
       await writeRequest($, id, 'done').catch(() => undefined)
