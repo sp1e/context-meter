@@ -52,7 +52,6 @@ declare module 'claude-code' {
       scanned: ContextBeat[]
       selfId: string
       requests: Record<string, CompactRequest>
-      isAwaitingSummary: boolean
       isPaneOpen: boolean
       isBandHidden: boolean
       isAutoCompact: boolean

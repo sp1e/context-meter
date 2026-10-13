@@ -33,12 +33,6 @@ const IDLE_STEPS = [0, 30, 45, 55]
 const TOKEN_STEPS = [100_000, 150_000, 200_000, 250_000]
 
 
-const SUMMARY_MARKER = 'Pausa dev här och skriv en bra /compact'
-const SUMMARY_PROMPT =
-  `${SUMMARY_MARKER} för den här sessionen: vad som är gjort, vad som återstår, ` +
-  'fattade beslut, viktiga filsökvägar och nästa steg. Citera avgörande felrader ordagrant. ' +
-  'Svara ENDAST med texten som ska stå efter /compact, inget annat.'
-
 // Steers every compaction that arrives without instructions of its own: the
 // engine's auto-compact at its threshold, a bare /compact, and a precompute.
 const COMPACT_INSTRUCTIONS = [
@@ -67,7 +61,6 @@ const beats = atom({ plugin: 'context-meter', key: 'beats' } as const, [])
 const scanned = atom({ plugin: 'context-meter', key: 'scanned' } as const, [])
 const selfId = atom({ plugin: 'context-meter', key: 'selfId' } as const, '')
 const requests = atom({ plugin: 'context-meter', key: 'requests' } as const, {})
-const isAwaitingSummary = atom({ plugin: 'context-meter', key: 'isAwaitingSummary' } as const, false)
 const isPaneOpen = atom({ plugin: 'context-meter', key: 'isPaneOpen' } as const, false)
 // Both per session: the band's close mark, and the auto-compact box.
 const isBandHidden = atom({ plugin: 'context-meter', key: 'isBandHidden' } as const, false)
@@ -146,7 +139,7 @@ const kilo = (n: number) =>
 const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path
 
 const isBusy = (r: CompactRequest | undefined) =>
-  r !== undefined && (r.state === 'requested' || r.state === 'summarizing' || r.state === 'compacting')
+  r !== undefined && (r.state === 'requested' || r.state === 'compacting')
 
 async function homeDir($: EngineInterface): Promise<string> {
   return (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? '.'
@@ -297,33 +290,20 @@ async function archiveSummary(
   await $.fs.write(`${await heartbeatDir($)}/compacts/${stamp}_${id}.md`, `${header}\n${summary}\n`)
 }
 
-// Step 1, in the target session: a requested compaction queues the summary
-// prompt, which the engine runs once the session is idle.
+// In the target session: a requested compaction runs at once with the
+// structured instructions, one model call over the context.
 async function takeRequest($: EngineInterface): Promise<void> {
   const id = await $.session.id()
   const request = (await read($, requests))[id]
-  if (request?.state !== 'requested' || (await read($, isAwaitingSummary))) return
-  await update($, isAwaitingSummary, () => true)
-  await writeRequest($, id, 'summarizing')
-  void $.prompt.submit({ text: SUMMARY_PROMPT })
-}
-
-// A session may answer as a pasteable block: ```\n/compact text\n```. Only the
-// text is the instruction.
-function toInstructions(answer: string): string {
-  return answer
-    .trim()
-    .replace(/^```[a-z]*\s*\n?/i, '')
-    .replace(/\n?```\s*$/, '')
-    .trim()
-    .replace(/^\/compact\s+/, '')
-    .trim()
+  if (request?.state !== 'requested') return
+  await writeRequest($, id, 'compacting', request.note)
+  void compactWith($, COMPACT_INSTRUCTIONS, 1)
 }
 
 const errorText = (error: unknown) =>
   (error instanceof Error ? error.message : String(error)).replace(/\s+/g, ' ').slice(0, 160)
 
-// Step 2: compact with the summary as instructions. Compaction is refused while
+// Compaction is refused while
 // a turn runs, so it is retried a few times; the last try goes through the
 // /compact command instead, and a failure keeps the engine's own words.
 async function compactWith($: EngineInterface, instructions: string, attempt: number): Promise<void> {
@@ -411,13 +391,8 @@ async function autoCompact($: EngineInterface): Promise<void> {
 
 // Idle compact: see idle.ts. Once per idle stretch: a request made after the last turn ends it.
 async function idleCompact($: EngineInterface): Promise<void> {
-  const [p, last, isRunning, isAwaiting] = await Promise.all([
-    read($, prefs),
-    read($, lastTurnAt),
-    read($, isTurnRunning),
-    read($, isAwaitingSummary),
-  ])
-  if (p.idleMinutes <= 0 || last === 0 || isRunning || isAwaiting) return
+  const [p, last, isRunning] = await Promise.all([read($, prefs), read($, lastTurnAt), read($, isTurnRunning)])
+  if (p.idleMinutes <= 0 || last === 0 || isRunning) return
   const [id, usage, now] = await Promise.all([$.session.id(), $.session.usage(), $.clock.now()])
   const request = (await read($, requests))[id]
   const due = isIdleCompactDue({
@@ -653,21 +628,6 @@ export const register: Register = on => {
       const now = await $.clock.now()
       await update($, isTurnRunning, () => false)
       await update($, lastTurnAt, () => now)
-    }
-    if (e.agentId === undefined && (await read($, isAwaitingSummary))) {
-      const messages = await $.session.messages()
-      const lastPrompt = [...messages].reverse().find(m => m.role === 'user' && m.text.trim() !== '')
-      if (lastPrompt?.text.includes(SUMMARY_MARKER)) {
-        await update($, isAwaitingSummary, () => false)
-        const id = await $.session.id()
-        const summary = toInstructions(e.answer)
-        if (e.isAborted || summary === '') {
-          await writeRequest($, id, 'failed', e.isAborted ? 'sammanfattningen avbröts' : 'tom sammanfattning')
-        } else {
-          await writeRequest($, id, 'compacting')
-          $.clock.after(2_000, () => void compactWith($, summary, 1))
-        }
-      }
     }
     await tick($)
 

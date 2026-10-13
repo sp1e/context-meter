@@ -10,7 +10,7 @@ The UI text is in Swedish.
 
 - `Context 15% +`: this session's fill, colored green, yellow or red. `+` opens the comparison pane, `−` closes it.
 - `×` hides the band in this session. `/context-meter` brings it back.
-- **Compact now** asks the session to write its own `/compact` summary, then compacts with it.
+- **Compact now** compacts this session at once with the structured instructions below.
 - **☐ Auto-compact 50%** does the same by itself once the session reaches the threshold. Per session.
 - **⚙ Options** opens the settings, shared by all sessions.
 
@@ -35,16 +35,16 @@ The UI text is in Swedish.
 A session can only compact itself, so a request goes through a file:
 
 1. The button writes `~/.claude/context-meter/requests/<session id>.json`.
-2. The target session picks it up on its next tick (every 15 s) and submits a prompt starting with `Pausa dev här och skriv en bra /compact`.
-3. When that turn completes, its answer becomes the instructions for `$.session.compact`, retried up to five times while the session is busy.
+2. The target session picks it up on its next tick (every 15 s) and compacts with the structured instructions below: one model call, the same as a bare `/compact`.
+3. A compaction refused while a turn runs is retried up to five times, then sent as the `/compact` command.
 
 ## Idle compact
 
-The API keeps the prompt cache for an hour. A prompt sent after a longer pause writes the whole context into the cache again, at twice the input price. A session that has had no turn for the idle time (55 min by default), with at least 150k tokens of context, therefore compacts itself through the same steps as Compact now. The summary turn reads the context from a warm cache, and the return starts from the smaller compacted context. It runs once per idle stretch, only while the cache is still warm (under 60 minutes), and not after a session is resumed, since the cache is cold by then.
+The API keeps the prompt cache for an hour. A prompt sent after a longer pause writes the whole context into the cache again, at twice the input price. A session that has had no turn for the idle time (55 min by default), with at least 150k tokens of context, therefore compacts itself through the same steps as Compact now. The compaction reads the context from a warm cache, and the return starts from the smaller compacted context. It runs once per idle stretch, only while the cache is still warm (under 60 minutes), and not after a session is resumed, since the cache is cold by then.
 
 ## Every compaction gets structured instructions
 
-A compaction that arrives without instructions of its own gets a fixed outline: the engine's auto-compact at its threshold, a bare `/compact` and a precompute. The summary then has the headings LÄGE, GJORT, BESLUT, FILER, FEL OCH LÖSNINGAR, NÄSTA STEG and FAST, with exact paths, ids, commands and numbers. The decisive line of each error is quoted verbatim, so the full tool output can be found again in the session transcript by searching for that line. A `/compact` typed with text keeps that text. Subagents' own compactions are left alone.
+Compact now, idle compact and every compaction that arrives without instructions of its own (the engine's auto-compact at its threshold, a bare `/compact`, a precompute) get a fixed outline. The summary then has the headings LÄGE, GJORT, BESLUT, FILER, FEL OCH LÖSNINGAR, NÄSTA STEG and FAST, with exact paths, ids, commands and numbers. The decisive line of each error is quoted verbatim, so the full tool output can be found again in the session transcript by searching for that line. A `/compact` typed with text keeps that text. Subagents' own compactions are left alone.
 
 Every summary that stands is saved to `compacts/<UTC time>_<session id>.md`, with the session, folder, trigger and tokens before and after. Other sessions can search them there.
 
