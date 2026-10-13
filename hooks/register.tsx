@@ -479,7 +479,7 @@ export const register: Register = on => {
     const request = (await read($, requests))[self]
 
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Box flexDirection="row" justifyContent="space-between">
           <Box flexDirection="row" gap={1}>
             <Text dimColor>
@@ -500,18 +500,20 @@ export const register: Register = on => {
             onPress={() => update($, isBandHidden, () => true)}
           />
         </Box>
-        <Box flexDirection="row" gap={2}>
-          <Button
-            key="context-meter-compact"
-            label={request && isBusy(request) ? STATE_TEXT[request.state] : 'Compact now'}
-            onPress={() => compactSelf($)}
-          />
-          <Button
-            key="context-meter-auto"
-            plain
-            label={`${isAuto ? '☑' : '☐'} Auto-compact ${p.autoAt}%`}
-            onPress={() => update($, isAutoCompact, was => !was)}
-          />
+        <Box flexDirection="row" justifyContent="space-between" marginTop={1}>
+          <Box flexDirection="row" gap={3}>
+            <Button
+              key="context-meter-compact"
+              label={request && isBusy(request) ? STATE_TEXT[request.state] : 'Compact now'}
+              onPress={() => compactSelf($)}
+            />
+            <Button
+              key="context-meter-auto"
+              plain
+              label={`${isAuto ? '☑' : '☐'} Custom autocomp. ${p.autoAt}%`}
+              onPress={() => update($, isAutoCompact, was => !was)}
+            />
+          </Box>
           <Button
             key="context-meter-options"
             plain
@@ -531,14 +533,14 @@ export const register: Register = on => {
             <Text dimColor>Options – gäller alla sessioner (bockrutan gäller bara den här)</Text>
             <Select
               key="context-meter-opt-auto-at"
-              label="Auto-compact vid "
+              label="Custom autocomp. vid "
               options={percentOptions(COMPACT_STEPS, p.autoAt)}
               value={String(p.autoAt)}
               onSelect={v => void savePrefs($, { autoAt: Number(v) })}
             />
             <Select
               key="context-meter-opt-auto-new"
-              label="Auto-compact påslaget i nya sessioner "
+              label="Custom autocomp. påslaget i nya sessioner "
               options={YES_NO}
               value={yesNo(p.autoInNewSessions)}
               onSelect={v => void savePrefs($, { autoInNewSessions: v === 'yes' })}
