@@ -13,6 +13,7 @@ The UI text is in Swedish.
 - **Compact now** compacts this session at once with the structured instructions below.
 - **☐ Auto-compact 50%** does the same by itself once the session reaches the threshold. Per session.
 - **⚙ Options** opens the settings, shared by all sessions.
+- **Prompt cache line**: after 40 minutes without a turn the band counts down to the end of the one-hour prompt cache (`Cachen går ut om 12 min`). Once it has expired it warns that the next prompt writes the whole context into the cache again (`Cachen har gått ut: nästa prompt skriver om ~180k tokens till cachen`).
 
 **The comparison pane** lists every session whose transcript was written recently, sorted by fill, with a bar, tokens / window and folder. A `[Compact]` button appears on a row at or above the threshold. Rows marked `≈` are sessions that do not run the mod. Their fill is estimated from the transcript.
 

@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { CACHE_TTL_MS, isIdleCompactDue } from './idle'
+import { CACHE_TTL_MS, cacheStatus, isIdleCompactDue } from './idle'
 
 const MIN = 60_000
 const base = {
@@ -32,4 +32,13 @@ test('avslaget, ingen tur sedan start eller pågående begäran ger ingen compac
 test('en gång per paus: en begäran efter senaste turen stoppar nästa', async () => {
   expect(isIdleCompactDue({ ...base, lastRequestAt: base.lastTurnAt + 55 * MIN })).toBe(false)
   expect(isIdleCompactDue({ ...base, lastRequestAt: base.lastTurnAt - MIN })).toBe(true)
+})
+
+test('cachestatus: varm, går ut snart, kall', async () => {
+  const s = { lastTurnAt: 1_000_000, tokens: 180_000, isRunning: false }
+  expect(cacheStatus({ ...s, now: s.lastTurnAt + 39 * MIN }).kind).toBe('warm')
+  expect(cacheStatus({ ...s, now: s.lastTurnAt + 48 * MIN })).toEqual({ kind: 'expiring', minutesLeft: 12, tokens: 180_000 })
+  expect(cacheStatus({ ...s, now: s.lastTurnAt + 60 * MIN })).toEqual({ kind: 'cold', tokens: 180_000 })
+  expect(cacheStatus({ ...s, now: s.lastTurnAt + 90 * MIN, isRunning: true }).kind).toBe('warm')
+  expect(cacheStatus({ ...s, lastTurnAt: 0, now: 90 * MIN }).kind).toBe('warm')
 })

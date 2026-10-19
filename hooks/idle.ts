@@ -27,3 +27,23 @@ export function isIdleCompactDue(i: IdleInput): boolean {
   // A request written after the last turn already covers this idle stretch.
   return i.lastRequestAt === undefined || i.lastRequestAt <= i.lastTurnAt
 }
+
+// Cache Tax: what the band says about the prompt cache while the session waits.
+// From WARN_MS of idle it counts down; once the hour has passed, the next prompt
+// writes the whole context into the cache again.
+export const CACHE_WARN_MS = 40 * 60_000
+
+export type CacheStatus =
+  | { kind: 'warm' }
+  | { kind: 'expiring'; minutesLeft: number; tokens: number }
+  | { kind: 'cold'; tokens: number }
+
+export function cacheStatus(i: { lastTurnAt: number; now: number; tokens: number; isRunning: boolean }): CacheStatus {
+  if (i.lastTurnAt === 0 || i.isRunning || i.tokens <= 0) return { kind: 'warm' }
+  const idleMs = i.now - i.lastTurnAt
+  if (idleMs >= CACHE_TTL_MS) return { kind: 'cold', tokens: i.tokens }
+  if (idleMs >= CACHE_WARN_MS) {
+    return { kind: 'expiring', minutesLeft: Math.ceil((CACHE_TTL_MS - idleMs) / 60_000), tokens: i.tokens }
+  }
+  return { kind: 'warm' }
+}

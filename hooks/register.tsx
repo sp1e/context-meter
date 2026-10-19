@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { CompactRequest, CompactState, ContextBeat, MeterPrefs } from '../types'
-import { isIdleCompactDue } from './idle'
+import { cacheStatus, isIdleCompactDue } from './idle'
 
 const PANE = 'context-meter'
 const BEAT_MS = 15_000
@@ -477,6 +477,12 @@ export const register: Register = on => {
     const isOptions = await read($, isOptionsOpen)
     const p = await read($, prefs)
     const request = (await read($, requests))[self]
+    const cache = cacheStatus({
+      lastTurnAt: await read($, lastTurnAt),
+      now: await $.clock.now(),
+      tokens: own?.tokens ?? 0,
+      isRunning: await read($, isTurnRunning),
+    })
 
     return (
       <Box flexDirection="column" paddingX={2} paddingY={1}>
@@ -522,6 +528,16 @@ export const register: Register = on => {
             onPress={() => update($, isOptionsOpen, was => !was)}
           />
         </Box>
+        {cache.kind === 'cold' && (
+          <Text key="context-meter-cache" color="yellow" wrap="truncate-end">
+            Cachen har gått ut: nästa prompt skriver om ~{kilo(cache.tokens)} tokens till cachen
+          </Text>
+        )}
+        {cache.kind === 'expiring' && (
+          <Text key="context-meter-cache" dimColor wrap="truncate-end">
+            Cachen går ut om {cache.minutesLeft} min (~{kilo(cache.tokens)} tokens)
+          </Text>
+        )}
         {request && !isBusy(request) && (
           <Text dimColor wrap="truncate-end">
             {STATE_TEXT[request.state]}
