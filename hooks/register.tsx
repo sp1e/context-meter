@@ -615,7 +615,7 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" paddingX={1}>
-        <Box flexDirection="row" alignItems="center" flexWrap="wrap" columnGap={2}>
+        <Box flexDirection="row" alignItems="center" columnGap={2}>
           {/* The desktop app draws a Button's label and drops its Text children,
               so the meter sits beside the button, not inside it. */}
           <Text>
@@ -654,7 +654,7 @@ export const register: Register = on => {
             key="context-meter-options"
             plain
             dimColor={!isOptions}
-            label="⚙ Options"
+            label="⚙"
             onPress={() => update($, isOptionsOpen, was => !was)}
           />
           <Button
