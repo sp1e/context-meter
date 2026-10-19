@@ -616,12 +616,9 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column" paddingX={1}>
         <Box flexDirection="row" alignItems="center" flexWrap="wrap" columnGap={2}>
-          <Button
-            key="context-meter-compare"
-            plain
-            label={isOpen ? 'Dölj jämförelsen' : 'Jämför sessioner'}
-            onPress={() => setPane($, !isOpen)}
-          >
+          {/* The desktop app draws a Button's label and drops its Text children,
+              so the meter sits beside the button, not inside it. */}
+          <Text>
             <Text dimColor>Context </Text>
             <Text bold color={percent === undefined ? undefined : colorFor(percent, p)}>
               {percent === undefined ? '–' : `${percent}%`}
@@ -632,8 +629,14 @@ export const register: Register = on => {
                 {c.glyph}
               </Text>
             ))}
-            <Text dimColor> {isOpen ? '▴' : '▾'}</Text>
-          </Button>
+          </Text>
+          <Button
+            key="context-meter-compare"
+            plain
+            dimColor={!isOpen}
+            label={isOpen ? 'Dölj jämförelsen ▴' : 'Jämför sessioner ▾'}
+            onPress={() => setPane($, !isOpen)}
+          />
           <Button
             key="context-meter-compact"
             variant="primary"
@@ -645,12 +648,7 @@ export const register: Register = on => {
             plain
             label={`Custom autocomp. ${p.autoAt}% ${isAuto ? 'på' : 'av'}`}
             onPress={() => update($, isAutoCompact, was => !was)}
-          >
-            <Text color={isAuto ? PERIWINKLE : undefined} dimColor={!isAuto}>
-              {isAuto ? '◉' : '○'}
-            </Text>
-            <Text dimColor={!isAuto}> Custom autocomp. {p.autoAt}%</Text>
-          </Button>
+          />
           <Box flexGrow={1} />
           <Button
             key="context-meter-options"
