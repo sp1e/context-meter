@@ -73,11 +73,36 @@ const isTurnRunning = atom({ plugin: 'context-meter', key: 'isTurnRunning' } as 
 // After a failed or finished compaction, auto-compact waits this long.
 const AUTO_PAUSE_MS = 10 * 60_000
 
-// Green below yellowAt, yellow up to and including redAt, red above.
-function colorFor(percent: number, p: MeterPrefs): string | undefined {
-  if (percent < p.yellowAt) return 'green'
-  if (percent <= p.redAt) return 'yellow'
-  return 'red'
+// The meter's palette: mint, sun and coral for the three zones, periwinkle for
+// auto-compact. Raw hex reads on both a dark and a light theme.
+const MINT = '#2EC4A0'
+const SUN = '#F5B83D'
+const CORAL = '#F26D6D'
+const PERIWINKLE = '#8B8FF7'
+const GAUGE_CELLS = 12
+
+// Mint below yellowAt, sun up to and including redAt, coral above.
+function colorFor(percent: number, p: MeterPrefs): string {
+  if (percent < p.yellowAt) return MINT
+  if (percent <= p.redAt) return SUN
+  return CORAL
+}
+
+type GaugeCell = { glyph: string; color?: string; isFilled: boolean }
+
+// The band's meter: filled cells take the colour of the zone they sit in, and a
+// tick marks where auto-compact fires while this session's box is ticked.
+function gauge(percent: number, p: MeterPrefs, autoAt?: number): GaugeCell[] {
+  const cells: GaugeCell[] = []
+  for (let i = 0; i < GAUGE_CELLS; i++) {
+    const at = ((i + 0.5) / GAUGE_CELLS) * 100
+    if (autoAt !== undefined && Math.round((autoAt / 100) * GAUGE_CELLS) === i) {
+      cells.push({ glyph: '┃', color: PERIWINKLE, isFilled: true })
+    }
+    const isFilled = percent >= at
+    cells.push({ glyph: isFilled ? '▰' : '▱', color: isFilled ? colorFor(at, p) : undefined, isFilled })
+  }
+  return cells
 }
 
 const numberOr = (value: unknown, fallback: number) =>
@@ -484,42 +509,149 @@ export const register: Register = on => {
       isRunning: await read($, isTurnRunning),
     })
 
-    return (
-      <Box flexDirection="column" paddingX={2} paddingY={1}>
-        <Box flexDirection="row" justifyContent="space-between">
-          <Box flexDirection="row" gap={1}>
-            <Text dimColor>
-              Context {own ? <Text color={colorFor(own.percent, p)}>{own.percent}%</Text> : '–'}
-            </Text>
-            <Button
-              key="context-meter-compare"
-              plain
-              label={isOpen ? '−' : '+'}
-              onPress={() => setPane($, !isOpen)}
-            />
-          </Box>
-          <Button
-            key="context-meter-close"
-            role="dismiss"
-            plain
-            label="×"
-            onPress={() => update($, isBandHidden, () => true)}
+    const percent = own?.percent
+    const cells = percent === undefined ? [] : gauge(percent, p, isAuto ? p.autoAt : undefined)
+
+    // Options in three short rows: compaction, colours, the comparison pane.
+    const optionsPanel = (
+      <Box flexDirection="column" marginTop={1}>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={3}>
+          <Text bold color={PERIWINKLE}>Compact</Text>
+          <Select
+            key="context-meter-opt-auto-at"
+            label="Custom autocomp. vid "
+            options={percentOptions(COMPACT_STEPS, p.autoAt)}
+            value={String(p.autoAt)}
+            onSelect={v => void savePrefs($, { autoAt: Number(v) })}
+          />
+          <Select
+            key="context-meter-opt-auto-new"
+            label="på i nya sessioner "
+            options={YES_NO}
+            value={yesNo(p.autoInNewSessions)}
+            onSelect={v => void savePrefs($, { autoInNewSessions: v === 'yes' })}
+          />
+          <Select
+            key="context-meter-opt-idle"
+            label="vid inaktivitet efter "
+            options={idleOptions(p.idleMinutes)}
+            value={String(p.idleMinutes)}
+            onSelect={v => void savePrefs($, { idleMinutes: Number(v) })}
+          />
+          <Select
+            key="context-meter-opt-idle-tokens"
+            label="om kontexten är minst "
+            options={tokenOptions(p.idleMinTokens)}
+            value={String(p.idleMinTokens)}
+            onSelect={v => void savePrefs($, { idleMinTokens: Number(v) })}
           />
         </Box>
-        <Box flexDirection="row" justifyContent="space-between" marginTop={1}>
-          <Box flexDirection="row" gap={3}>
-            <Button
-              key="context-meter-compact"
-              label={request && isBusy(request) ? STATE_TEXT[request.state] : 'Compact now'}
-              onPress={() => compactSelf($)}
-            />
-            <Button
-              key="context-meter-auto"
-              plain
-              label={`${isAuto ? '☑' : '☐'} Custom autocomp. ${p.autoAt}%`}
-              onPress={() => update($, isAutoCompact, was => !was)}
-            />
-          </Box>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={3}>
+          <Text bold color={SUN}>Färger</Text>
+          <Select
+            key="context-meter-opt-yellow"
+            label="gul från "
+            options={percentOptions(YELLOW_STEPS, p.yellowAt)}
+            value={String(p.yellowAt)}
+            onSelect={v => void savePrefs($, { yellowAt: Number(v) })}
+          />
+          <Select
+            key="context-meter-opt-red"
+            label="röd över "
+            options={percentOptions(RED_STEPS, p.redAt)}
+            value={String(p.redAt)}
+            onSelect={v => void savePrefs($, { redAt: Number(v) })}
+          />
+        </Box>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={3}>
+          <Text bold color={MINT}>Panelen</Text>
+          <Select
+            key="context-meter-opt-pane"
+            label="öppen vid start "
+            options={YES_NO}
+            value={yesNo(!p.isHidden)}
+            onSelect={v => void savePrefs($, { isHidden: v === 'no' })}
+          />
+          <Select
+            key="context-meter-opt-active"
+            label="sessioner aktiva senaste "
+            options={percentOptions(MINUTE_STEPS, p.activeMinutes, ' min')}
+            value={String(p.activeMinutes)}
+            onSelect={v => void savePrefs($, { activeMinutes: Number(v) }).then(() => scan($))}
+          />
+          <Select
+            key="context-meter-opt-button-at"
+            label="[Compact] från "
+            options={percentOptions(COMPACT_STEPS, p.buttonAt)}
+            value={String(p.buttonAt)}
+            onSelect={v => void savePrefs($, { buttonAt: Number(v) })}
+          />
+          <Select
+            key="context-meter-opt-estimated"
+            label="sessioner utan moddet (≈) "
+            options={YES_NO}
+            value={yesNo(p.showEstimated)}
+            onSelect={v => void savePrefs($, { showEstimated: v === 'yes' })}
+          />
+        </Box>
+        <Box flexDirection="row" alignItems="center" columnGap={2}>
+          <Text dimColor>Gäller alla sessioner. Bocken gäller bara den här.</Text>
+          <Box flexGrow={1} />
+          <Button
+            key="context-meter-opt-reset"
+            plain
+            dimColor
+            label="Återställ standard"
+            onPress={() => savePrefs($, { ...DEFAULT_PREFS, isHidden: p.isHidden })}
+          />
+          <Button
+            key="context-meter-opt-done"
+            label="Klar"
+            onPress={() => update($, isOptionsOpen, () => false)}
+          />
+        </Box>
+      </Box>
+    )
+
+    return (
+      <Box flexDirection="column" paddingX={1}>
+        <Box flexDirection="row" alignItems="center" flexWrap="wrap" columnGap={2}>
+          <Button
+            key="context-meter-compare"
+            plain
+            label={isOpen ? 'Dölj jämförelsen' : 'Jämför sessioner'}
+            onPress={() => setPane($, !isOpen)}
+          >
+            <Text dimColor>Context </Text>
+            <Text bold color={percent === undefined ? undefined : colorFor(percent, p)}>
+              {percent === undefined ? '–' : `${percent}%`}
+            </Text>
+            <Text> </Text>
+            {cells.map(c => (
+              <Text color={c.color} dimColor={!c.isFilled}>
+                {c.glyph}
+              </Text>
+            ))}
+            <Text dimColor> {isOpen ? '▴' : '▾'}</Text>
+          </Button>
+          <Button
+            key="context-meter-compact"
+            variant="primary"
+            label={request && isBusy(request) ? `${STATE_TEXT[request.state]} …` : 'Compact now'}
+            onPress={() => compactSelf($)}
+          />
+          <Button
+            key="context-meter-auto"
+            plain
+            label={`Custom autocomp. ${p.autoAt}% ${isAuto ? 'på' : 'av'}`}
+            onPress={() => update($, isAutoCompact, was => !was)}
+          >
+            <Text color={isAuto ? PERIWINKLE : undefined} dimColor={!isAuto}>
+              {isAuto ? '◉' : '○'}
+            </Text>
+            <Text dimColor={!isAuto}> Custom autocomp. {p.autoAt}%</Text>
+          </Button>
+          <Box flexGrow={1} />
           <Button
             key="context-meter-options"
             plain
@@ -527,110 +659,37 @@ export const register: Register = on => {
             label="⚙ Options"
             onPress={() => update($, isOptionsOpen, was => !was)}
           />
+          <Button
+            key="context-meter-close"
+            role="dismiss"
+            plain
+            dimColor
+            label="×"
+            onPress={() => update($, isBandHidden, () => true)}
+          />
         </Box>
         {cache.kind === 'cold' && (
-          <Text key="context-meter-cache" color="yellow" wrap="truncate-end">
-            Cachen har gått ut: nästa prompt skriver om ~{kilo(cache.tokens)} tokens till cachen
+          <Text key="context-meter-cache" color={SUN} wrap="truncate-end">
+            ◷ Cachen har gått ut: nästa prompt skriver om ~{kilo(cache.tokens)} tokens till cachen
           </Text>
         )}
         {cache.kind === 'expiring' && (
           <Text key="context-meter-cache" dimColor wrap="truncate-end">
-            Cachen går ut om {cache.minutesLeft} min (~{kilo(cache.tokens)} tokens)
+            ◷ Cachen går ut om {cache.minutesLeft} min (~{kilo(cache.tokens)} tokens)
           </Text>
         )}
         {request && !isBusy(request) && (
-          <Text dimColor wrap="truncate-end">
-            {STATE_TEXT[request.state]}
-            {request.note ? ` – ${request.note}` : ''}
+          <Text wrap="truncate-end">
+            <Text color={request.state === 'failed' ? CORAL : MINT}>
+              {request.state === 'failed' ? '✕ ' : '✓ '}
+            </Text>
+            <Text dimColor>
+              {STATE_TEXT[request.state]}
+              {request.note ? ` – ${request.note}` : ''}
+            </Text>
           </Text>
         )}
-        {isOptions && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text dimColor>Options – gäller alla sessioner (bockrutan gäller bara den här)</Text>
-            <Select
-              key="context-meter-opt-auto-at"
-              label="Custom autocomp. vid "
-              options={percentOptions(COMPACT_STEPS, p.autoAt)}
-              value={String(p.autoAt)}
-              onSelect={v => void savePrefs($, { autoAt: Number(v) })}
-            />
-            <Select
-              key="context-meter-opt-auto-new"
-              label="Custom autocomp. påslaget i nya sessioner "
-              options={YES_NO}
-              value={yesNo(p.autoInNewSessions)}
-              onSelect={v => void savePrefs($, { autoInNewSessions: v === 'yes' })}
-            />
-            <Select
-              key="context-meter-opt-idle"
-              label="Compact vid inaktivitet efter "
-              options={idleOptions(p.idleMinutes)}
-              value={String(p.idleMinutes)}
-              onSelect={v => void savePrefs($, { idleMinutes: Number(v) })}
-            />
-            <Select
-              key="context-meter-opt-idle-tokens"
-              label="…om kontexten är minst "
-              options={tokenOptions(p.idleMinTokens)}
-              value={String(p.idleMinTokens)}
-              onSelect={v => void savePrefs($, { idleMinTokens: Number(v) })}
-            />
-            <Select
-              key="context-meter-opt-button-at"
-              label="[Compact]-knapp i panelen från "
-              options={percentOptions(COMPACT_STEPS, p.buttonAt)}
-              value={String(p.buttonAt)}
-              onSelect={v => void savePrefs($, { buttonAt: Number(v) })}
-            />
-            <Select
-              key="context-meter-opt-yellow"
-              label="Gul från "
-              options={percentOptions(YELLOW_STEPS, p.yellowAt)}
-              value={String(p.yellowAt)}
-              onSelect={v => void savePrefs($, { yellowAt: Number(v) })}
-            />
-            <Select
-              key="context-meter-opt-red"
-              label="Röd över "
-              options={percentOptions(RED_STEPS, p.redAt)}
-              value={String(p.redAt)}
-              onSelect={v => void savePrefs($, { redAt: Number(v) })}
-            />
-            <Select
-              key="context-meter-opt-active"
-              label="Visa sessioner aktiva senaste "
-              options={percentOptions(MINUTE_STEPS, p.activeMinutes, ' min')}
-              value={String(p.activeMinutes)}
-              onSelect={v => void savePrefs($, { activeMinutes: Number(v) }).then(() => scan($))}
-            />
-            <Select
-              key="context-meter-opt-estimated"
-              label="Visa sessioner utan moddet (≈) "
-              options={YES_NO}
-              value={yesNo(p.showEstimated)}
-              onSelect={v => void savePrefs($, { showEstimated: v === 'yes' })}
-            />
-            <Select
-              key="context-meter-opt-pane"
-              label="Öppna jämförelsepanelen vid start "
-              options={YES_NO}
-              value={yesNo(!p.isHidden)}
-              onSelect={v => void savePrefs($, { isHidden: v === 'no' })}
-            />
-            <Box flexDirection="row" gap={2}>
-              <Button
-                key="context-meter-opt-reset"
-                label="Återställ standard"
-                onPress={() => savePrefs($, { ...DEFAULT_PREFS, isHidden: p.isHidden })}
-              />
-              <Button
-                key="context-meter-opt-done"
-                label="Klar"
-                onPress={() => update($, isOptionsOpen, () => false)}
-              />
-            </Box>
-          </Box>
-        )}
+        {isOptions && optionsPanel}
       </Box>
     )
   })
