@@ -615,40 +615,59 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" paddingX={1}>
-        <Box flexDirection="row" alignItems="center" columnGap={2}>
-          {/* The desktop app draws a Button's label and drops its Text children,
-              so the meter sits beside the button, not inside it. */}
-          <Text>
-            <Text dimColor>Context </Text>
-            <Text bold color={percent === undefined ? undefined : colorFor(percent, p)}>
-              {percent === undefined ? '–' : `${percent}%`}
-            </Text>
-            <Text> </Text>
-            {cells.map(c => (
-              <Text color={c.color} dimColor={!c.isFilled}>
-                {c.glyph}
+        {/* Each group reads like the meter: a dim caption with a bold value on
+            top, the control underneath. The desktop draws a Button's label in its
+            own type and drops Text children, so the styled text sits above it. */}
+        <Box flexDirection="row" alignItems="flex-end" columnGap={4}>
+          <Box flexDirection="column">
+            <Text>
+              <Text dimColor>Context </Text>
+              <Text bold color={percent === undefined ? undefined : colorFor(percent, p)}>
+                {percent === undefined ? '–' : `${percent}%`}
               </Text>
-            ))}
-          </Text>
-          <Button
-            key="context-meter-compare"
-            plain
-            dimColor={!isOpen}
-            label={isOpen ? 'Dölj jämförelsen ▴' : 'Jämför sessioner ▾'}
-            onPress={() => setPane($, !isOpen)}
-          />
-          <Button
-            key="context-meter-compact"
-            variant="primary"
-            label={request && isBusy(request) ? `${STATE_TEXT[request.state]} …` : 'Compact now'}
-            onPress={() => compactSelf($)}
-          />
-          <Button
-            key="context-meter-auto"
-            plain
-            label={`Custom autocomp. ${p.autoAt}% ${isAuto ? 'på' : 'av'}`}
-            onPress={() => update($, isAutoCompact, was => !was)}
-          />
+            </Text>
+            <Text>
+              {cells.map(c => (
+                <Text color={c.color} dimColor={!c.isFilled}>
+                  {c.glyph}
+                </Text>
+              ))}
+            </Text>
+          </Box>
+          <Box flexDirection="column">
+            <Text dimColor>Sessioner</Text>
+            <Button
+              key="context-meter-compare"
+              plain
+              dimColor={!isOpen}
+              label={isOpen ? 'Dölj ▴' : 'Jämför ▾'}
+              onPress={() => setPane($, !isOpen)}
+            />
+          </Box>
+          <Box flexDirection="column">
+            <Text dimColor>Manuellt</Text>
+            <Button
+              key="context-meter-compact"
+              variant="primary"
+              label={request && isBusy(request) ? `${STATE_TEXT[request.state]} …` : 'Compact now'}
+              onPress={() => compactSelf($)}
+            />
+          </Box>
+          <Box flexDirection="column">
+            <Text>
+              <Text dimColor>Custom autocomp. </Text>
+              <Text bold color={isAuto ? PERIWINKLE : undefined} dimColor={!isAuto}>
+                {p.autoAt}%
+              </Text>
+            </Text>
+            <Button
+              key="context-meter-auto"
+              plain
+              dimColor={!isAuto}
+              label={isAuto ? '◉ På' : '○ Av'}
+              onPress={() => update($, isAutoCompact, was => !was)}
+            />
+          </Box>
           <Box flexGrow={1} />
           <Button
             key="context-meter-options"
