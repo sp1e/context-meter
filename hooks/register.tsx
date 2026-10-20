@@ -617,84 +617,98 @@ export const register: Register = on => {
       <Box flexDirection="column" paddingX={1}>
         {/* One row in the smallest type the surface has. The desktop draws a
             Button's label in its own type and drops Text children, so the
-            styled text sits beside the buttons and the notes run inline. */}
+            styled text sits beside the buttons and the notes run inline. The
+            content shrinks and clips; ⚙ and × never shrink, so a narrow
+            session window still shows the way to close the band. */}
         <Box flexDirection="row" alignItems="center" columnGap={2}>
-          <Text size="caption" tabular>
-            <Text dimColor>Context </Text>
-            <Text bold color={percent === undefined ? undefined : colorFor(percent, p)}>
-              {percent === undefined ? '–' : `${percent}%`}
-            </Text>
-            <Text> </Text>
-            {cells.map(c => (
-              <Text color={c.color} dimColor={!c.isFilled}>
-                {c.glyph}
+          <Box
+            flexDirection="row"
+            alignItems="center"
+            columnGap={2}
+            flexGrow={1}
+            flexShrink={1}
+            minWidth={0}
+            overflow="hidden"
+          >
+            <Text size="caption" tabular>
+              <Text dimColor>Context </Text>
+              <Text bold color={percent === undefined ? undefined : colorFor(percent, p)}>
+                {percent === undefined ? '–' : `${percent}%`}
               </Text>
-            ))}
-          </Text>
-          <Button
-            key="context-meter-compare"
-            plain
-            dimColor={!isOpen}
-            label={isOpen ? 'Dölj ▴' : 'Jämför ▾'}
-            onPress={() => setPane($, !isOpen)}
-          />
-          <Button
-            key="context-meter-compact"
-            plain
-            label={request && isBusy(request) ? `${STATE_TEXT[request.state]} …` : 'Compact'}
-            onPress={() => compactSelf($)}
-          />
-          <Text size="caption" tabular>
-            <Text dimColor>Auto </Text>
-            <Text bold color={isAuto ? PERIWINKLE : undefined} dimColor={!isAuto}>
-              {p.autoAt}%
-            </Text>
-          </Text>
-          <Button
-            key="context-meter-auto"
-            plain
-            dimColor={!isAuto}
-            label={isAuto ? '◉' : '○'}
-            onPress={() => update($, isAutoCompact, was => !was)}
-          />
-          <Box flexGrow={1} flexShrink={1} minWidth={0}>
-            {cache.kind === 'cold' && (
-              <Text key="context-meter-cache" size="caption" color={SUN} wrap="truncate-end">
-                ◷ Cachen har gått ut: nästa prompt skriver om ~{kilo(cache.tokens)} tokens
-              </Text>
-            )}
-            {cache.kind === 'expiring' && (
-              <Text key="context-meter-cache" size="caption" dimColor wrap="truncate-end">
-                ◷ Cachen går ut om {cache.minutesLeft} min (~{kilo(cache.tokens)} tokens)
-              </Text>
-            )}
-            {cache.kind !== 'cold' && cache.kind !== 'expiring' && request && !isBusy(request) && (
-              <Text size="caption" wrap="truncate-end">
-                <Text color={request.state === 'failed' ? CORAL : MINT}>
-                  {request.state === 'failed' ? '✕ ' : '✓ '}
+              <Text> </Text>
+              {cells.map(c => (
+                <Text color={c.color} dimColor={!c.isFilled}>
+                  {c.glyph}
                 </Text>
-                <Text dimColor>
-                  {STATE_TEXT[request.state]}
-                  {request.note ? ` – ${request.note}` : ''}
-                </Text>
+              ))}
+            </Text>
+            <Button
+              key="context-meter-compare"
+              plain
+              dimColor={!isOpen}
+              label={isOpen ? 'Dölj ▴' : 'Jämför ▾'}
+              onPress={() => setPane($, !isOpen)}
+            />
+            <Button
+              key="context-meter-compact"
+              plain
+              label={request && isBusy(request) ? `${STATE_TEXT[request.state]} …` : 'Compact'}
+              onPress={() => compactSelf($)}
+            />
+            <Text size="caption" tabular>
+              <Text dimColor>Auto </Text>
+              <Text bold color={isAuto ? PERIWINKLE : undefined} dimColor={!isAuto}>
+                {p.autoAt}%
               </Text>
-            )}
+            </Text>
+            <Button
+              key="context-meter-auto"
+              plain
+              dimColor={!isAuto}
+              label={isAuto ? '◉' : '○'}
+              onPress={() => update($, isAutoCompact, was => !was)}
+            />
+            <Box flexGrow={1} flexShrink={1} minWidth={0}>
+              {cache.kind === 'cold' && (
+                <Text key="context-meter-cache" size="caption" color={SUN} wrap="truncate-end">
+                  ◷ Cachen har gått ut: nästa prompt skriver om ~{kilo(cache.tokens)} tokens
+                </Text>
+              )}
+              {cache.kind === 'expiring' && (
+                <Text key="context-meter-cache" size="caption" dimColor wrap="truncate-end">
+                  ◷ Cachen går ut om {cache.minutesLeft} min (~{kilo(cache.tokens)} tokens)
+                </Text>
+              )}
+              {cache.kind !== 'cold' && cache.kind !== 'expiring' && request && !isBusy(request) && (
+                <Text size="caption" wrap="truncate-end">
+                  <Text color={request.state === 'failed' ? CORAL : MINT}>
+                    {request.state === 'failed' ? '✕ ' : '✓ '}
+                  </Text>
+                  <Text dimColor>
+                    {STATE_TEXT[request.state]}
+                    {request.note ? ` – ${request.note}` : ''}
+                  </Text>
+                </Text>
+              )}
+            </Box>
           </Box>
-          <Button
-            key="context-meter-options"
-            plain
-            dimColor={!isOptions}
-            label="⚙"
-            onPress={() => update($, isOptionsOpen, was => !was)}
-          />
-          <Button
-            key="context-meter-close"
-            role="dismiss"
-            plain
-            dimColor
-            label="×"
-            onPress={() => update($, isBandHidden, () => true)}
-          />
+          <Box flexDirection="row" alignItems="center" columnGap={1} flexShrink={0}>
+            <Button
+              key="context-meter-options"
+              plain
+              dimColor={!isOptions}
+              label="⚙"
+              onPress={() => update($, isOptionsOpen, was => !was)}
+            />
+            <Button
+              key="context-meter-close"
+              role="dismiss"
+              plain
+              dimColor
+              label="×"
+              onPress={() => update($, isBandHidden, () => true)}
+            />
+          </Box>
         </Box>
         {isOptions && optionsPanel}
       </Box>
